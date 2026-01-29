@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Adres Defterim</title>
+<style>
+@media screen {
+body { font-family: Arial, sans-serif; margin: 30px; }
+form input, form textarea { width: 100%; margin-bottom: 8px; padding: 6px; }
+button { padding: 6px 12px; margin: 5px 5px 5px 0; cursor: pointer; }
+table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+th, td { border: 1px solid #aaa; padding: 6px; }
+th { background: #eee; cursor: pointer; }
+#printArea { display: none; }
+#backup {display:none;}
+}
+@media print {
+body * {
+    display:none;
+  }
+
+  #printArea, #printArea * {
+    display:block;
+  }
+
+  #printList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6mm;
+  }
+
+  .etiket {
+    width: 90mm;
+    height: 80mm;
+    border: .5mm solid black;
+	border-radius: 4px;
+    padding: 5mm;
+    box-sizing: border-box;
+    font-size: 20px; font-family: Trebushet, Tahoma, Verdana;
+    page-break-inside: avoid;
+  }
+
+  .alici {
+    font-weight: bold;
+    margin-bottom: 4mm;
+  }
+  .kent {text-align:right;}
+  .adres,
+  .telefon,
+  .not {
+    margin-bottom: 3mm;
+  }
+}
+</style>
+</head>
+<body>
+
+<h2>Kişi Rehberi</h2>
+
+<form id="form">
+  <input id="adsoyad" placeholder="Ad Soyad" required>
+  <input id="telefon" placeholder="Telefon" required>
+  <input id="adres" placeholder="Adres">
+  <textarea id="not" placeholder="Not"></textarea>
+  <button>Ekle</button>
+</form>
+
+<button onclick="yazdir()">Seçilenleri Yazdır</button>
+<button onclick="seciliSil()">Seçilenleri Sil</button>
+<div id="backup">
+<button onclick="exportDB()">Yedekle</button>
+<input type="file" id="importFile" accept=".json" onchange="importDB(this.files[0])">
+</div>
+<button onclick="ackapa(this)">&#128190;</button>
+
+<table>
+<thead>
+<tr>
+  <th onclick="hepsiniSec()">☑</th>
+  <th id="thAdSoyad">Ad Soyad ↕</th>
+  <th>Telefon</th>
+  <th>Adres</th>
+  <th>Not</th>
+</tr>
+</thead>
+<tbody id="liste"></tbody>
+</table>
+
+<div id="printArea">
+  <table><tbody id="printList"></tbody></table>
+</div>
+
+<script>
+var gizli=true;
+let db;
+let siralama = { alan: 'ad', yon: 'asc' };
+let SecilenKayitlar = [];
+
+
+/* ==== DB AÇ ==== */
+const req = indexedDB.open('RehberDB', 1);
+
+req.onupgradeneeded = e => {
+  const dbx = e.target.result;
+  if (!dbx.objectStoreNames.contains('kisiler')) {
+    dbx.createObjectStore('kisiler', { keyPath: 'id', autoIncrement: true });
+  }
+};
+
+req.onsuccess = e => {
+  db = e.target.result;
+  listele();
+};
+
+/* ==== EKLE ==== */
+form.onsubmit = e => {
+  e.preventDefault();
+  const tx = db.transaction('kisiler', 'readwrite');
+  tx.objectStore('kisiler').add({
+    adsoyad: adsoyad.value,
+    telefon: telefon.value,
+    adres: adres.value,
+    not: not.value
+  });
+  tx.oncomplete = () => { form.reset(); listele(); };
+};
+
+/* ==== LİSTELE + SIRALA ==== */
+function listele() {
+  liste.innerHTML = '';
+  const kayitlar = [];
+  const tx = db.transaction('kisiler');
+  const store = tx.objectStore('kisiler');
+
+  store.openCursor().onsuccess = e => {
+    const c = e.target.result;
+    if (!c) {
+      kayitlar.sort((a, b) => {
+        const ap = a.adsoyad.split(/\s+/);
+        const bp = b.adsoyad.split(/\s+/);
+        const av = (siralama.alan === 'ad' ? ap[0] : ap[ap.length-1]).toLowerCase();
+        const bv = (siralama.alan === 'ad' ? bp[0] : bp[bp.length-1]).toLowerCase();
+        return siralama.yon === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+      });
+
+      kayitlar.forEach(k => {
+        const tr = document.createElement('tr');
+        tr.ondblclick = () => duzenle(k);
+        tr.innerHTML = `
+          <td><input type="checkbox" data-id="${k.id}"></td>
+          <td>${k.adsoyad}</td>
+          <td>${k.telefon ?? ''}</td>
+          <td>${k.adres ?? ''}</td>
+          <td>${k.not ?? ''}</td>`;
+        liste.appendChild(tr);
+      });
+      return;
+    }
+    kayitlar.push({ id: c.key, ...c.value });
+    c.continue();
+  };
+}
+
+/* ==== DÜZENLE ==== */
+function duzenle(k) {
+  adsoyad.value = k.adsoyad;
+  telefon.value = k.telefon;
+  adres.value = k.adres;
+  not.value = k.not;
+  seciliSil();
+}
+
+/* ==== SEÇ / SİL ==== */
+function hepsiniSec() {
+  document.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = true);
+}
+
+function seciliSil() {
+  const secilen = document.querySelectorAll('input[type=checkbox]:checked');
+  if (!secilen.length) return;
+  const tx = db.transaction('kisiler', 'readwrite');
+  const store = tx.objectStore('kisiler');
+  secilen.forEach(c => store.delete(Number(c.dataset.id)));
+  tx.oncomplete = listele;
+}
+
+/* ==== YAZDIR ==== */
+function yazdir() {
+  printList.innerHTML = "";
+
+  const secilenler = document.querySelectorAll(
+    'input[type="checkbox"]:checked'
+  );
+
+  if (secilenler.length === 0) {
+    alert("Yazdırmak için kayıt seçmelisin.");
+    return;
+  }
+
+  let tx = db.transaction("kisiler");
+  let store = tx.objectStore("kisiler");
+
+  let kalan = secilenler.length;
+
+  secilenler.forEach(cb => {
+    let id = Number(cb.dataset.id);
+
+    store.get(id).onsuccess = e => {
+      let k = e.target.result;
+
+      if (!k) return;
+	  
+	  let 
+	   adso=k.adsoyad.toUpperCase(),
+	   aadr=k.adres.indexOf('--')>-1?k.adres.split('--')[0].toUpperCase():k.adres.toUpperCase(),
+	   kent=k.adres.indexOf('--')>-1?k.adres.split('--')[1].toUpperCase():'',
+	   telf=k.telefon
+				.replace(/([0-9]+)/g,'$1')
+				.replace(/0?([1-9][0-9]{2})([0-9]{3})([0-9]{2})([0-9]{2})/,'0$1 $2 $3 $4')
+	  ;
+	  
+		
+      let etiket = document.createElement("div");
+      etiket.className = "etiket";
+
+      etiket.innerHTML = `
+        <div class="alici">ALICI: ${adso}</div>
+        <div class="adres">${aadr || ""}</div>
+		<div class="kent">${kent || ""}</div>
+        <div class="telefon">TEL: ${telf || ""}</div>
+        ${k.not ? `<div class="not">${k.not}</div>` : ""}
+      `;
+
+      printList.appendChild(etiket);
+
+      kalan--;
+      if (kalan === 0) window.print();
+    };
+  });
+}
+
+
+
+/* ==== EXPORT ==== */
+function exportDB() {
+  const tx = db.transaction('kisiler');
+  const store = tx.objectStore('kisiler');
+  const arr = [];
+  store.openCursor().onsuccess = e => {
+    const c = e.target.result;
+    if (!c) {
+      const blob = new Blob([JSON.stringify(arr, null, 2)], {type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'rehber_yedek.json';
+      a.click();
+      return;
+    }
+    arr.push(c.value);
+    c.continue();
+  };
+}
+
+/* ==== IMPORT ==== */
+function importDB(file) {
+  if (!file) return;
+  const temizle = confirm('Mevcut kayıtlar silinsin mi?');
+  const r = new FileReader();
+  r.onload = e => {
+    let text = e.target.result;
+    if (text.charCodeAt(0) === 65279) text = text.slice(1);
+    let data = JSON.parse(text);
+    const tx = db.transaction('kisiler', 'readwrite');
+    const store = tx.objectStore('kisiler');
+    if (temizle) store.clear();
+    data.forEach(k => { delete k.id; store.add(k); });
+    tx.oncomplete = listele;
+  };
+  r.readAsText(file);
+}
+
+/* ==== SIRALAMA ==== */
+thAdSoyad.onclick = e => {
+  siralama.alan = e.shiftKey ? 'soyad' : 'ad';
+  siralama.yon = siralama.yon === 'asc' ? 'desc' : 'asc';
+  listele();
+};
+/* ==== YEDEKELER Göster/Gizle ==== */
+function ackapa(node){
+  let simge=['&#128190;','&#128473;']; // disket/kapat
+  let bakup=document.getElementById('backup').style;
+  if(!gizli) {
+	node.innerHTML=simge[0];bakup.display='none';gizli=true;
+  } else {
+	node.innerHTML=simge[1];bakup.display='inline';gizli=false;
+  }
+}
+
+</script>
+</body>
+</html>
+	
