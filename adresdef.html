@@ -1,24 +1,31 @@
+
 <!DOCTYPE html>
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kişi Rehberi</title>
+
 <style>
+
 @media screen {
 body { font-family: Arial, sans-serif; margin: 30px; }
 form input, form textarea { width: 100%; margin-bottom: 8px; padding: 6px; }
 button { padding: 6px 12px; margin: 5px 5px 5px 0; cursor: pointer; }
 table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-th, td { border: 1px solid #aaa; padding: 6px; }
+th, td,#senderAddress { border: 1px solid #aaa; padding: 6px; }
 th { background: #eee; cursor: pointer; }
 #printArea { display: none; }
 #backup {display:none;}
+#senderAddress  {width:450px;height:90px}
+.var {display:block;}
+.yok {display:none;}
 }
 @media print {
 body * {
     display:none;
   }
-
+  
   #printArea, #printArea * {
     display:block;
   }
@@ -36,10 +43,10 @@ body * {
 	border-radius: 4px;
     padding: 5mm;
     box-sizing: border-box;
-    font-size: 26px; font-family: Trebuchet MS, Tahoma, Verdana;
+    font-size: 28px; font-family: Trebuchet MS, Tahoma, Verdana;
     page-break-inside: avoid;
   }
-
+  
   .alici {
     font-weight: bold;
     margin-bottom: 4mm;
@@ -50,242 +57,622 @@ body * {
   .not {
     margin-bottom: 3mm;
   }
+  /* Gönderici */
+  .gonderic {border:solid .5mm #444;color:#444;padding-top:3mm;width:120mm; font-family: Trebuchet MS, Tahoma, Verdana;}
+  .gonderici-baslik {font-size: 24px;padding:0;}
+  .gonderici {font-size: 22px;}
 }
 </style>
 </head>
+
 <body>
+<h1>Adres Defteri</h1>
+<section class="panel">
+  <h2>Kişiler</h2>
 
-<h2>Kişi Rehberi</h2>
+  <div class="toolbar">    
+    <button type="button" id="printButton" class="primary">🖨️</button>    <label for="senderAddress">
+      <input type="checkbox" id="gonderici">Gönderici adresi ekle
+    </label>
+	<div id="backup">
+    <button type="button" id="exportButton">Yedekle</button>
+    <input type="file" id="importFile" accept=".json,application/json" >
+	</div>
+    <button onclick="ackapa(this)">&#128190;</button>
+  </div>
 
-<form id="form">
-  <input id="adsoyad" placeholder="Ad Soyad" required>
-  <input id="telefon" placeholder="Telefon" required>
-  <input id="adres" placeholder="Adres">
-  <textarea id="not" placeholder="Not"></textarea>
-  <button>Ekle</button>
-</form>
+  <p class="hint">
+    Bir kişiyi düzenlemek için satırına çift tıkla.
+    Etiket adedi yalnızca yazdırma miktarını belirler; kişi kaydını değiştirmez.
+    Başlıklara tıklayarak sıralama yapabilirsin. Soyada göre sıralamak için
+    Shift tuşunu basılı tutarak Ad Soyad başlığına tıkla.
+  </p>
 
-<button onclick="yazdir()">Seçilenleri Yazdır</button>
-<button onclick="seciliSil()">Seçilenleri Sil</button>
-<div id="backup">
-<button onclick="exportDB()">Yedekle</button>
-<input type="file" id="importFile" accept=".json" onchange="importDB(this.files[0])">
-</div>
-<button onclick="ackapa(this)">&#128190;</button>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="selectAllButton"></th>
+          <th>
+            <span id="sortNameButton">Ad Soyad ↕</span>
+          </th>
+          <th>Telefon</th>
+          <th>Adres</th>
+          <th>Not</th>
+          <th>Etiket adedi</th>
+        </tr>
+      </thead>
+      <tbody id="contactRows"></tbody>
+    </table>
+	<button type="button" id="deleteSelectedButton" class="danger">Seçilenleri Kişileri Sil</button>
+	<button type="button" id="newButton" class="danger" onclick="$('k').className=='yok'?$('k').className='var':$('k').className='yok'">Yeni Kişi</button>
+  </div>
 
-<table>
-<thead>
-<tr>
-  <th onclick="hepsiniSec()">☑</th>
-  <th id="thAdSoyad">Ad Soyad ↕</th>
-  <th>Telefon</th>
-  <th>Adres</th>
-  <th>Not</th>
-</tr>
-</thead>
-<tbody id="liste"></tbody>
-</table>
+  <div id="status" role="status" aria-live="polite"></div>
+</section>
+<section class="panel">
+<div id="k" class="yok">
+  <h2 id="formTitle">Alıcı Ekle</h2>
+  <h2 id="editTitle">Kişiyi Düzenle</h2>
+  <form id="contactForm">
+    <input type="hidden" id="contactId">
 
+    <div class="form-grid">
+      <div class="field">
+        <label for="adsoyad">Ad Soyad *</label>
+        <input id="adsoyad" required autocomplete="name">
+      </div>
+
+      <div class="field">
+        <label for="telefon">Telefon</label>
+        <input id="telefon" type="tel" autocomplete="tel">
+      </div>
+
+      <div class="field full">
+        <label for="adres">Adres</label>
+        <textarea id="adres" autocomplete="street-address"></textarea>
+      </div>
+
+      <div class="field full">
+        <label for="not">Not</label>
+        <textarea id="not"></textarea>
+      </div>
+    </div>
+
+    <div style="margin-top:12px">
+      <button class="primary" type="submit" id="saveButton">Kaydet</button>
+      <button type="button" id="cancelEditButton" hidden>Vazgeç</button>
+    </div>
+  </form>
+  </div>
+</section>
+<!-- Yazdırma ayarları ekranda görünür, ancak etikete basılmaz. -->
+<section class="panel" id="printSettings">
+  <h2>Ayarlar</h2>
+
+  <div class="field">
+    <label><input type="checkbox" onchange="this.checked?senderAddress.className='var':senderAddress.className='yok'">Gönderici düzenle</label>
+    <textarea id="senderAddress" class="yok" >Turgut Cengiz
+
+Cengiz Eczanesi
+Gençlik Cad.28/B Efeler,AYDIN
+Tel.: 0533 369 2687
+</textarea>
+  </div>
+
+  <p class="hint">
+    Gönderici adresi, her etikette alıcı bilgileri ve notunun altında yer alır.
+    Etiket ölçüsü 12 x 8.5 cm, kenarlık 0.5 mm'dir.
+  </p>
+</section>
+
+<!-- Yazdırma sırasında yalnızca bu alan görünür. -->
 <div id="printArea">
-  <table><tbody id="printList"></tbody></table>
+  <div id="printList"></div>
 </div>
 
 <script>
-var gizli=true;
+"use strict";
+
+const DB_NAME = "RehberDB";
+const STORE_NAME = "kisiler";
+
+let gizli=true;
 let db;
-let siralama = { alan: 'ad', yon: 'asc' };
-let SecilenKayitlar = [];
+let kisiler = [];
+let sortMode = "name";
+let sortAscending = true;
 
+const $ = id => document.getElementById(id);
 
-/* ==== DB AÇ ==== */
-const req = indexedDB.open('RehberDB', 1);
+function durumYaz(metin) {
+  $("status").textContent = metin;
+}
 
-req.onupgradeneeded = e => {
-  const dbx = e.target.result;
-  if (!dbx.objectStoreNames.contains('kisiler')) {
-    dbx.createObjectStore('kisiler', { keyPath: 'id', autoIncrement: true });
-  }
-};
+function dbAc() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
 
-req.onsuccess = e => {
-  db = e.target.result;
-  listele();
-};
+    request.onupgradeneeded = () => {
+      const database = request.result;
 
-/* ==== EKLE ==== */
-form.onsubmit = e => {
-  e.preventDefault();
-  const tx = db.transaction('kisiler', 'readwrite');
-  tx.objectStore('kisiler').add({
-    adsoyad: adsoyad.value,
-    telefon: telefon.value,
-    adres: adres.value,
-    not: not.value
+      if (!database.objectStoreNames.contains(STORE_NAME)) {
+        database.createObjectStore(STORE_NAME, {
+          keyPath: "id",
+          autoIncrement: true
+        });
+      }
+    };
+
+    request.onsuccess = () => {
+      db = request.result;
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
+
+    request.onerror = () => reject(request.error);
   });
-  tx.oncomplete = () => { form.reset(); listele(); };
-};
+}
 
-/* ==== LİSTELE + SIRALA ==== */
-function listele() {
-  liste.innerHTML = '';
-  const kayitlar = [];
-  const tx = db.transaction('kisiler');
-  const store = tx.objectStore('kisiler');
+function islem(storeMode, action) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, storeMode);
+    const store = tx.objectStore(STORE_NAME);
+    let result;
 
-  store.openCursor().onsuccess = e => {
-    const c = e.target.result;
-    if (!c) {
-      kayitlar.sort((a, b) => {
-        const ap = a.adsoyad.split(/\s+/);
-        const bp = b.adsoyad.split(/\s+/);
-        const av = (siralama.alan === 'ad' ? ap[0] : ap[ap.length-1]).toLowerCase();
-        const bv = (siralama.alan === 'ad' ? bp[0] : bp[bp.length-1]).toLowerCase();
-        return siralama.yon === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
-      });
-
-      kayitlar.forEach(k => {
-        const tr = document.createElement('tr');
-        tr.ondblclick = () => duzenle(k);
-        tr.innerHTML = `
-          <td><input type="checkbox" data-id="${k.id}"></td>
-          <td>${k.adsoyad}</td>
-          <td>${k.telefon ?? ''}</td>
-          <td>${k.adres ?? ''}</td>
-          <td>${k.not ?? ''}</td>`;
-        liste.appendChild(tr);
-      });
+    try {
+      result = action(store);
+    } catch (error) {
+      reject(error);
       return;
     }
-    kayitlar.push({ id: c.key, ...c.value });
-    c.continue();
-  };
+
+    tx.oncomplete = () => resolve(result?.result);
+    tx.onerror = () => reject(tx.error || new Error("Veritabanı işlemi başarısız."));
+    tx.onabort = () => reject(tx.error || new Error("Veritabanı işlemi iptal edildi."));
+  });
 }
 
-/* ==== DÜZENLE ==== */
-function duzenle(k) {
-  adsoyad.value = k.adsoyad;
-  telefon.value = k.telefon;
-  adres.value = k.adres;
-  not.value = k.not;
-  seciliSil();
+function tumKayitlariGetir() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const request = tx.objectStore(STORE_NAME).getAll();
+
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
 }
 
-/* ==== SEÇ / SİL ==== */
-function hepsiniSec() {
-  document.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = true);
+async function listeyiYenile() {
+  kisiler = await tumKayitlariGetir();
+  listeyiCiz();
 }
 
-function seciliSil() {
-  const secilen = document.querySelectorAll('input[type=checkbox]:checked');
-  if (!secilen.length) return;
-  const tx = db.transaction('kisiler', 'readwrite');
-  const store = tx.objectStore('kisiler');
-  secilen.forEach(c => store.delete(Number(c.dataset.id)));
-  tx.oncomplete = listele;
-}
-
-/* ==== YAZDIR ==== */
-function yazdir() {
-  printList.innerHTML = "";
-
-  const secilenler = document.querySelectorAll(
-    'input[type="checkbox"]:checked'
+function metinKarsilastir(a, b) {
+  return String(a || "").localeCompare(
+    String(b || ""),
+    "tr",
+    { sensitivity: "base" }
   );
+}
 
-  if (secilenler.length === 0) {
-    alert("Yazdırmak için kayıt seçmelisin.");
+function adinIlkBolumu(adsoyad) {
+  return String(adsoyad || "").trim().split(/\s+/)[0] || "";
+}
+
+function soyadBolumu(adsoyad) {
+  const parcalar = String(adsoyad || "").trim().split(/\s+/).filter(Boolean);
+  return parcalar.length > 1 ? parcalar.slice(1).join(" ") : parcalar[0] || "";
+}
+
+function siraliKisiler() {
+  const sonuc = [...kisiler];
+
+  sonuc.sort((a, b) => {
+    let karsilastirma;
+
+    if (sortMode === "surname") {
+      karsilastirma = metinKarsilastir(
+        soyadBolumu(a.adsoyad),
+        soyadBolumu(b.adsoyad)
+      );
+
+      if (karsilastirma === 0) {
+        karsilastirma = metinKarsilastir(a.adsoyad, b.adsoyad);
+      }
+    } else {
+      karsilastirma = metinKarsilastir(
+        adinIlkBolumu(a.adsoyad),
+        adinIlkBolumu(b.adsoyad)
+      );
+
+      if (karsilastirma === 0) {
+        karsilastirma = metinKarsilastir(a.adsoyad, b.adsoyad);
+      }
+    }
+
+    return sortAscending ? karsilastirma : -karsilastirma;
+  });
+
+  return sonuc;
+}
+
+function hucreyeMetinYaz(td, value) {
+  td.textContent = value == null ? "" : String(value);
+}
+
+function listeyiCiz() {
+  const tbody = $("contactRows");
+  tbody.replaceChildren();
+
+  for (const kisi of siraliKisiler()) {
+    const tr = document.createElement("tr");
+    tr.dataset.id = String(kisi.id);
+
+    const secimTd = document.createElement("td");
+    const secim = document.createElement("input");
+    secim.type = "checkbox";
+    secim.className = "contact-checkbox";
+    secim.dataset.id = String(kisi.id);
+    secim.setAttribute("aria-label", `${kisi.adsoyad} kişisini seç`);
+    secimTd.appendChild(secim);
+
+    const adTd = document.createElement("td");
+    hucreyeMetinYaz(adTd, kisi.adsoyad);
+
+    const telefonTd = document.createElement("td");
+    hucreyeMetinYaz(telefonTd, kisi.telefon);
+
+    const adresTd = document.createElement("td");
+    hucreyeMetinYaz(adresTd, kisi.adres);
+
+    const notTd = document.createElement("td");
+    hucreyeMetinYaz(notTd, kisi.not);
+
+    const adetTd = document.createElement("td");
+    const adet = document.createElement("input");
+    adet.type = "number";
+    adet.min = "1";
+    adet.max = "500";
+    adet.step = "1";
+    adet.value = "1";
+    adet.className = "count-input label-count";
+    adet.dataset.id = String(kisi.id);
+    adet.setAttribute("aria-label", `${kisi.adsoyad} etiket adedi`);
+    adetTd.appendChild(adet);
+
+    tr.append(secimTd, adTd, telefonTd, adresTd, notTd, adetTd);
+    tbody.appendChild(tr);
+  }
+
+  $("sortNameButton").textContent =
+    `Ad Soyad (${sortMode === "surname" ? "soyad" : "ad"} ${sortAscending ? "A→Z" : "Z→A"})`;
+}
+
+function seciliIdler() {
+  return [...document.querySelectorAll(".contact-checkbox:checked")]
+    .map(cb => Number(cb.dataset.id));
+}
+
+function formuTemizle() {
+  $("contactForm").reset();
+  $("contactId").value = "";
+  $("formTitle").style.display = "block";
+  $("editTitle").style.display = "none";
+  $("saveButton").textContent = "Kaydet";
+  $("cancelEditButton").hidden = true;
+}
+
+$("contactForm").addEventListener("submit", async event => {
+  event.preventDefault();
+
+  const adsoyad = $("adsoyad").value.trim();
+
+  if (!adsoyad) {
+    alert("Ad Soyad alanı boş bırakılamaz.");
+    $("adsoyad").focus();
     return;
   }
 
-  let tx = db.transaction("kisiler");
-  let store = tx.objectStore("kisiler");
+  const kisi = {
+    adsoyad,
+    telefon: $("telefon").value.trim(),
+    adres: $("adres").value.trim(),
+    not: $("not").value.trim()
+  };
 
-  let kalan = secilenler.length;
+  const idValue = $("contactId").value;
 
-  secilenler.forEach(cb => {
-    let id = Number(cb.dataset.id);
+  try {
+    if (idValue !== "") {
+      kisi.id = Number(idValue);
+      await islem("readwrite", store => store.put(kisi));
+      durumYaz("Kişi güncellendi.");
+    } else {
+      await islem("readwrite", store => store.add(kisi));
+      durumYaz("Kişi eklendi.");
+    }
 
-    store.get(id).onsuccess = e => {
-      let k = e.target.result;
+    formuTemizle();
+    await listeyiYenile();
+  } catch (error) {
+    console.error(error);
+    alert("Kayıt yapılamadı: " + error.message);
+  }
+});
 
-      if (!k) return;
-	  
-	  let 
-	   adso=k.adsoyad.toUpperCase(),
-	   aadr=k.adres.indexOf('--')>-1?k.adres.split('--')[0].toUpperCase():k.adres.toUpperCase(),
-	   kent=k.adres.indexOf('--')>-1?k.adres.split('--')[1].toUpperCase():'',
-	   telf=k.telefon
-				.replace(/([0-9]+)/g,'$1')
-				.replace(/0?([1-9][0-9]{2})([0-9]{3})([0-9]{2})([0-9]{2})/,'0$1 $2 $3 $4')
-	  ;
-	  
-		
-      let etiket = document.createElement("div");
-      etiket.className = "etiket";
+$("cancelEditButton").addEventListener("click", formuTemizle);
 
-      etiket.innerHTML = `
-        <div class="alici">ALICI: ${adso}</div>
-        <div class="adres">${aadr || ""}</div>
-		<div class="kent">${kent || ""}</div>
-        <div class="telefon">TEL: ${telf || ""}</div>
-        ${k.not ? `<div class="not">${k.not}</div>` : ""}
-      `;
+$("contactRows").addEventListener("dblclick", event => {
+  if (event.target.closest("input, button, label")) return;
 
-      printList.appendChild(etiket);
+  const tr = event.target.closest("tr");
+  if (!tr) return;
 
-      kalan--;
-      if (kalan === 0) window.print();
-    };
+  const id = Number(tr.dataset.id);
+  const kisi = kisiler.find(k => Number(k.id) === id);
+  if (!kisi) return;
+	$('k').className='var';
+  $("contactId").value = kisi.id;
+  $("adsoyad").value = kisi.adsoyad || "";
+  $("telefon").value = kisi.telefon || "";
+  $("adres").value = kisi.adres || "";
+  $("not").value = kisi.not || "";
+
+  $("formTitle").style.display = "none";
+  $("editTitle").style.display = "block";
+  $("saveButton").textContent = "Değişiklikleri Kaydet";
+  $("cancelEditButton").hidden = false;
+
+  $("contactForm").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("adsoyad").focus();
+});
+
+$("selectAllButton").addEventListener("click", () => {
+  if(event.target.checked)
+  document.querySelectorAll(".contact-checkbox").forEach(cb => {
+    cb.checked = true;
   });
+  else
+    document.querySelectorAll(".contact-checkbox").forEach(cb => {
+    cb.checked = false;
+  });
+});
+
+
+
+$("deleteSelectedButton").addEventListener("click", async () => {
+  const ids = seciliIdler();
+
+  if (ids.length === 0) {
+    alert("Önce silinecek kişileri seç.");
+    return;
+  }
+
+  if (!confirm(`${ids.length} kişi silinecek. Devam edilsin mi?`)) return;
+
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+
+      ids.forEach(id => store.delete(id));
+
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("Silme işlemi iptal edildi."));
+    });
+
+    formuTemizle();
+    await listeyiYenile();
+    durumYaz(`${ids.length} kişi silindi.`);
+  } catch (error) {
+    console.error(error);
+    alert("Silme işlemi başarısız: " + error.message);
+  }
+});
+
+$("sortNameButton").addEventListener("click", event => {
+  const newMode = event.shiftKey ? "surname" : "name";
+
+  if (sortMode === newMode) {
+    sortAscending = !sortAscending;
+  } else {
+    sortMode = newMode;
+    sortAscending = true;
+  }
+
+  listeyiCiz();
+});
+
+function elemanOlustur(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
 }
 
+function etiketeSatirEkle(etiket, className, metin) {
+  if (!metin) return;
 
+  const satir = elemanOlustur("div", className, metin);
+  etiket.appendChild(satir);
+}
 
-/* ==== EXPORT ==== */
-function exportDB() {
-  const tx = db.transaction('kisiler');
-  const store = tx.objectStore('kisiler');
-  const arr = [];
-  store.openCursor().onsuccess = e => {
-    const c = e.target.result;
-    if (!c) {
-      const blob = new Blob([JSON.stringify(arr, null, 2)], {type:'application/json'});
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'rehber_yedek.json';
-      a.click();
+function etiketOlustur(kisi, gondericiAdresi) {
+  const etiket = elemanOlustur("div", "etiket");
+
+  etiketeSatirEkle(etiket, "alici", `Alıcı: ${kisi.adsoyad || ""}`);
+  etiketeSatirEkle(etiket, "adres", kisi.adres || "");
+  etiketeSatirEkle(etiket, "telefon", kisi.telefon || "");
+  // Not boşsa not satırı oluşturulmaz.
+  etiketeSatirEkle(etiket, "not", kisi.not || "");
+
+  return etiket;
+}
+
+$("printButton").addEventListener("click", async () => {
+  const ids = seciliIdler();
+
+  if (ids.length === 0) {
+    alert("Yazdırmak için en az bir kişi seç.");
+    return;
+  }
+
+  const adetAlanlari = [...document.querySelectorAll(".label-count")];
+  const adetler = new Map();
+
+  for (const alan of adetAlanlari) {
+    const adet = Number(alan.value);
+
+    if (!Number.isInteger(adet) || adet < 1 || adet > 500) {
+      alert("Etiket adedi 1 ile 500 arasında bir tam sayı olmalıdır.");
+      alan.focus();
       return;
     }
-    arr.push(c.value);
-    c.continue();
-  };
-}
 
-/* ==== IMPORT ==== */
-function importDB(file) {
+    adetler.set(Number(alan.dataset.id), adet);
+  }
+
+  const toplamAdet = ids.reduce((toplam, id) => toplam + (adetler.get(id) || 1), 0);
+
+  if (toplamAdet > 500) {
+    alert("Tek seferde en fazla 500 etiket yazdırılabilir.");
+    return;
+  }
+
+  const secilenler = ids
+    .map(id => kisiler.find(k => Number(k.id) === id))
+    .filter(Boolean);
+
+  const gondericiAdresi = $("senderAddress").value.trim();
+  const printList = $("printList");
+  printList.replaceChildren();
+
+  for (const kisi of secilenler) {
+    const adet = adetler.get(Number(kisi.id)) || 1;
+
+    for (let i = 0; i < adet; i++) {
+      printList.appendChild(etiketOlustur(kisi, gondericiAdresi));
+	    if (gonderici.checked) {
+			const gonderici = elemanOlustur("div", "gonderic");			
+			let gBaslik=elemanOlustur("div", "gonderici-baslik", "Gönderici:");				
+			gonderici.appendChild(gBaslik);
+			let gAdres=elemanOlustur("pre", "gonderici", gondericiAdresi);	
+			gBaslik.after(gAdres);
+			printList.appendChild(gonderici);
+		}
+    }
+  }
+
+  if (printList.children.length === 0) {
+    alert("Yazdırılacak etiket bulunamadı.");
+    return;
+  }
+
+  // Tarayıcı yazdırma penceresini açar.
+  window.print();
+});
+
+$("exportButton").addEventListener("click", async () => {
+  try {
+    const kayitlar = await tumKayitlariGetir();
+    const json = JSON.stringify(kayitlar, null, 2);
+    const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download = `rehber-yedek-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    durumYaz(`${kayitlar.length} kayıt JSON dosyasına aktarıldı.`);
+  } catch (error) {
+    console.error(error);
+    alert("Yedek oluşturulamadı: " + error.message);
+  }
+});
+
+$("importFile").addEventListener("change", async event => {
+  const file = event.target.files?.[0];
   if (!file) return;
-  const temizle = confirm('Mevcut kayıtlar silinsin mi?');
-  const r = new FileReader();
-  r.onload = e => {
-    let text = e.target.result;
-    if (text.charCodeAt(0) === 65279) text = text.slice(1);
-    let data = JSON.parse(text);
-    const tx = db.transaction('kisiler', 'readwrite');
-    const store = tx.objectStore('kisiler');
-    if (temizle) store.clear();
-    data.forEach(k => { delete k.id; store.add(k); });
-    tx.oncomplete = listele;
-  };
-  r.readAsText(file);
-}
 
-/* ==== SIRALAMA ==== */
-thAdSoyad.onclick = e => {
-  siralama.alan = e.shiftKey ? 'soyad' : 'ad';
-  siralama.yon = siralama.yon === 'asc' ? 'desc' : 'asc';
-  listele();
-};
-/* ==== YEDEKELER Göster/Gizle ==== */
+  try {
+    const raw = await file.text();
+    const temiz = raw.replace(/^\uFEFF/, "").trim();
+    const parsed = JSON.parse(temiz);
+
+    // Hem doğrudan dizi hem de { kisiler: [...] } biçimi kabul edilir.
+    const kayitlar = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed.kisiler)
+        ? parsed.kisiler
+        : null;
+
+    if (!kayitlar) {
+      throw new Error("JSON dosyasında kişi listesi bulunamadı.");
+    }
+
+    const duzeltilmis = kayitlar.map((k, index) => {
+      if (!k || typeof k !== "object" || Array.isArray(k)) {
+        throw new Error(`${index + 1}. kayıt geçerli bir nesne değil.`);
+      }
+
+      const adsoyad = String(k.adsoyad ?? k.ad ?? "").trim();
+
+      if (!adsoyad) {
+        throw new Error(`${index + 1}. kayıtta Ad Soyad alanı boş.`);
+      }
+
+      // Yedeğin id alanı kullanılmaz; veritabanı yeni kimlik atar.
+      return {
+        adsoyad,
+        telefon: String(k.telefon ?? ""),
+        adres: String(k.adres ?? ""),
+        not: String(k.not ?? "")
+      };
+    });
+
+    if (duzeltilmis.length === 0) {
+      alert("Dosyada içe aktarılacak kişi bulunamadı.");
+      return;
+    }
+
+    const secim = confirm(
+      `${duzeltilmis.length} kayıt içe aktarılacak.\n\n` +
+      "Mevcut kişiler silinmeyecek; kayıtlar eklenecek. " +
+      "Aynı kişi yedekte birden fazla bulunuyorsa tekrar eklenebilir.\n\nDevam edilsin mi?"
+    );
+
+    if (!secim) return;
+
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+
+      for (const kisi of duzeltilmis) {
+        store.add(kisi);
+      }
+
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("İçe aktarma iptal edildi."));
+    });
+
+    await listeyiYenile();
+    durumYaz(`${duzeltilmis.length} kayıt içe aktarıldı.`);
+    alert(`${duzeltilmis.length} kişi başarıyla içe aktarıldı.`);
+  } catch (error) {
+    console.error(error);
+    alert("JSON dosyası içe aktarılamadı:\n" + error.message);
+  } finally {
+    event.target.value = "";
+  }
+});
+/* ==== YEDEKLER Göster/Gizle ==== */
 function ackapa(node){
   let simge=['&#128190;','&#128473;']; // disket/kapat
   let bakup=document.getElementById('backup').style;
@@ -295,8 +682,23 @@ function ackapa(node){
 	node.innerHTML=simge[1];bakup.display='inline';gizli=false;
   }
 }
-
+window.addEventListener("afterprint", () => {
+  $("printList").replaceChildren();
+});
+	
+(async function baslat() {
+  try {
+    await dbAc();
+    await listeyiYenile();
+    //durumYaz("Kişi rehberi hazır.");
+  } catch (error) {
+    console.error(error);
+    alert(
+      "Veritabanı açılamadı: " + error.message +
+      "\nTarayıcının IndexedDB desteğini ve dosyanın tarayıcıda açıldığını kontrol et."
+    );
+  }
+})();
 </script>
 </body>
 </html>
-	
